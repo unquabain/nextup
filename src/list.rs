@@ -1,6 +1,7 @@
 use crate::range::Range;
 use crate::strings::Strings;
 use bincode::{decode_from_std_read,encode_into_std_write,Encode,Decode,config::Config};
+use log::debug;
 
 fn bcconfig() -> impl Config {
     bincode::config::standard()
@@ -56,6 +57,10 @@ impl List {
         }
     }
 
+    pub fn strings(&self) -> &Strings {
+        &self.strings
+    }
+
     pub fn load(path: &std::path::PathBuf) -> Result<List,ListError> {
         let mut file = std::fs::File::open(path)
             .map_err(|e| ListError::new(&format!("could not open file: {:?}", e)))?;
@@ -63,6 +68,31 @@ impl List {
             .map_err(|e| ListError::new(&format!("could not deserialize file: {:?}", e)))
     }
 
+    fn used_ranges_len(&self) -> usize {
+        let mut sum = 0;
+        for range in &self.rank {
+            sum += range.len();
+        }
+        sum
+    }
+    pub fn should_repack(&self) -> bool {
+        if !self.dirty {
+            return false;
+        }
+        self.strings.strlen() > self.used_ranges_len()*2
+    }
+
+    pub fn repack(&mut self) {
+        let mut new_strings = Strings::new();
+        let mut new_rank = Vec::new();
+        for range in &self.rank {
+            let new_range = new_strings.add(self.strings.get(*range));
+            new_rank.push(new_range);
+        }
+        self.strings = new_strings;
+        self.rank = new_rank;
+        self.dirty = true;
+    }
     pub fn save(&self, path: &std::path::PathBuf) -> Result<(),ListError> {
         if !self.dirty {
             return Ok(());
@@ -93,9 +123,11 @@ impl List {
 
     pub fn promote(&mut self, index: usize) -> bool {
         if index == 0 {
+            debug!("reached root; not promoting");
             return false;
         }
         let parent = parent(index);
+        debug!("promoting {} to {}", index, parent);
         self.rank.swap(parent, index);
         self.dirty = true;
         true
@@ -105,17 +137,34 @@ impl List {
         let index = self.rank.len();
         self.rank.push(range);
         self.dirty = true;
+        debug!("added {} at {}", string, index);
         Cursor::new(self, index, Direction::Promote)
     }
 
-    pub fn complete(&mut self) -> Cursor {
-        self.strings.free(self.rank[0]);
-        self.rank.swap_remove(0);
+    pub fn complete(&mut self) -> Result<Cursor, ListError> {
+        if self.rank.is_empty() {
+            return Err(ListError::new("no tasks to complete"));
+        }
+        debug!("completing root");
+        self.delete(0)
+    }
+
+    pub fn delete(&mut self, index: usize) -> Result<Cursor,ListError> {
+        if index >= self.rank.len() {
+            return Err(ListError::new("index out of range"));
+        }
+        debug!("freeing string at index {} range {:?}", index, self.rank[index]);
+        self.strings.free(self.rank[index]);
+        self.rank.swap_remove(index);
         self.dirty = true;
-        Cursor::new(self, 0, Direction::Demote)
+        if index < self.rank.len() {
+            debug!("new temporary value is {:?}", self.strings.get(self.rank[index]));
+        }
+        Ok(Cursor::new(self, index, Direction::Demote))
     }
 
     pub fn defer(&mut self) -> Cursor {
+        debug!("demoting root");
         Cursor::new(self, 0, Direction::Demote)
     }
 
@@ -159,8 +208,9 @@ impl<'list> Cursor<'list> {
         if self.index == 0 {
             return false;
         }
+        let child = self.index;
         self.index = parent(self.index);
-        self.list.promote(self.index)
+        self.list.promote(child)
     }
     pub fn strings_for_demotion(&self) -> Option<(&str, &str, Option<&str>)> {
         let left = left(self.index);
@@ -193,6 +243,7 @@ impl ListRanker for Cursor<'_> {
         }
     }
     fn choose(&mut self, choice: i32) -> Result<bool, &'static str> {
+        debug!("chose {}", choice);
         match choice {
             0 => Ok(false),
 

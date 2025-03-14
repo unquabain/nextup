@@ -1,10 +1,120 @@
 use crate::range::{Range,Ranges};
 use bincode::{Encode,Decode};
+use log::debug;
 
 #[derive(Debug,Default,Encode,Decode)]
 pub struct Strings {
     free_ranges: Ranges,
     strings: String,
+}
+
+#[derive(Debug)]
+pub struct StringsInspectionEntry<'a> {
+    pub range: Range,
+    pub free: bool,
+    pub value: &'a str,
+}
+
+#[derive(Debug)]
+pub struct StringsInspector<'a> {
+    strings: &'a Strings,
+    index: usize,
+    prefix_emitted: bool,
+}
+
+impl<'a> StringsInspector<'a> {
+    pub fn new(strings: &'a Strings) -> StringsInspector<'a> {
+        StringsInspector {
+            strings,
+            index: 0,
+            prefix_emitted: false,
+        }
+    }
+    fn first_entries(&mut self) -> Option<StringsInspectionEntry<'a>> {
+        let range = match self.strings.free_ranges.get(self.index)  {
+            Some(&range) => range,
+            None => Range::new(self.strings.free_ranges.highest(), self.strings.free_ranges.highest()),
+        };
+
+        if range.start == 0 {
+            self.prefix_emitted = true;
+        }
+        if self.prefix_emitted {
+            let value = self.strings.get(range);
+            self.index += 1;
+            self.prefix_emitted = false;
+            return Some(StringsInspectionEntry {
+                range,
+                free: true,
+                value,
+            });
+        }
+        let value = self.strings.get(Range::new(0, range.start));
+        self.prefix_emitted = true;
+        Some(StringsInspectionEntry {
+            range: Range::new(0, range.start),
+            free: false,
+            value,
+        })
+    }
+
+    fn last_entry(&mut self) -> Option<StringsInspectionEntry<'a>> {
+        if self.prefix_emitted {
+            return None;
+        }
+        if self.index == 0 {
+            return None;
+        }
+        let range = match self.strings.free_ranges.get(self.index - 1) {
+            Some(&range) => range,
+            None => Range::new(0, 0),
+        };
+        if self.strings.free_ranges.highest() <= range.end {
+            return None;
+        }
+        let string = self.strings.get(Range { start: range.end, end: self.strings.free_ranges.highest() });
+        self.prefix_emitted = true;
+        Some(StringsInspectionEntry {
+            range: Range { start: range.end, end: self.strings.free_ranges.highest() },
+            free: false,
+            value: string,
+        })
+    }
+}
+
+impl<'a> std::iter::Iterator for StringsInspector<'a> {
+    type Item = StringsInspectionEntry<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.strings.free_ranges.len() {
+            return self.last_entry();
+        }
+        if self.index == 0 {
+            return self.first_entries();
+        }
+        let range = self.strings.free_ranges.get(self.index).unwrap();
+        if self.prefix_emitted {
+            let string = self.strings.get(*range);
+            self.index += 1;
+            self.prefix_emitted = false;
+            debug!("emitting free range: {:?}", range);
+            Some(StringsInspectionEntry {
+                range: *range,
+                free: true,
+                value: string,
+            })
+        } else {
+            let last_range = self.strings.free_ranges.get(self.index - 1).unwrap();
+            assert!(last_range.end <= range.start);
+            let string = self.strings.get(Range::new(last_range.end, range.start));
+            self.prefix_emitted = true;
+            debug!("emitting used range between: {:?} and {:?}", last_range, range);
+            Some(StringsInspectionEntry {
+                range: Range::new(last_range.end, range.start),
+                free: false,
+                value: string,
+            })
+        }
+    }
 }
 
 impl Strings {
@@ -26,6 +136,13 @@ impl Strings {
                 range
             },
         }
+    }
+    pub fn strlen(&self) -> usize {
+        self.strings.len()
+    }
+
+    pub fn iter(&self) -> StringsInspector {
+        StringsInspector::new(self)
     }
     pub fn get(&self, range: Range) -> &str {
         &self.strings[range.start..range.end]

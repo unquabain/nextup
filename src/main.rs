@@ -3,6 +3,14 @@ use clap::{Parser, Subcommand};
 use nextup::{questionnaire,List};
 
 #[derive(Subcommand, Debug)]
+enum DebugCommands {
+    Inspect,
+    Nuke,
+    DBPath,
+    Repack,
+}
+
+#[derive(Subcommand, Debug)]
 enum SubCommand {
     List,
     Add {
@@ -10,6 +18,13 @@ enum SubCommand {
     },
     Complete,
     Defer,
+    Debug {
+        #[command(subcommand)]
+        subcommand: DebugCommands,
+    },
+    Delete {
+        index: usize,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -62,12 +77,40 @@ fn main() {
                 println!("{}: {}", i+1, task);
             }
         },
+        Some(SubCommand::Debug {subcommand}) =>
+            match subcommand {
+                DebugCommands::Inspect => {
+                    println!("Tasks:");
+                    for (i, task) in list.iter().enumerate() {
+                        println!("{}: {}", i+1, task);
+                    }
+                    println!("Strings:");
+                    for (i, range) in list.strings().iter().enumerate() {
+                        let free = if range.free { "free" } else { "used" };
+                        println!("{}: {} - {} ({}): {}", i, range.range.start, range.range.end, free, range.value);
+                    }
+                },
+                DebugCommands::DBPath => {
+                    println!("{}", dbfile.display());
+                },
+                DebugCommands::Nuke => {
+                    std::fs::remove_file(&dbfile).unwrap();
+                    list = List::new();
+                },
+                DebugCommands::Repack => {
+                    list.repack();
+                },
+            },
         Some(SubCommand::Add { task }) => {
             let mut cursor = list.add(&task);
             questionnaire(&mut cursor).unwrap();
         },
         Some(SubCommand::Complete) => {
-            let mut cursor = list.complete();
+            let mut cursor = list.complete().unwrap();
+            questionnaire(&mut cursor).unwrap();
+        },
+        Some(SubCommand::Delete { index }) => {
+            let mut cursor = list.delete(index-1).unwrap();
             questionnaire(&mut cursor).unwrap();
         },
         Some(SubCommand::Defer) => {
@@ -79,6 +122,9 @@ fn main() {
     match list.nextup() {
         Some(task) => println!("Next up: {}", task),
         None => println!("All caught up!"),
+    }
+    if list.should_repack() {
+        list.repack();
     }
     let saved = list.save(&dbfile);
     if let Err(e) = saved {

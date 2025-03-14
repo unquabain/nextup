@@ -1,5 +1,6 @@
 use std::ops::{Bound, RangeBounds};
 use bincode::{Encode,Decode};
+use log::debug;
 
 #[derive(Debug,Default,Copy,Clone,Encode,Decode)]
 pub struct Range {
@@ -38,6 +39,9 @@ pub struct Ranges {
 impl Ranges {
     pub fn new() -> Ranges {
         Ranges::default()
+    }
+    pub fn get(&self, index: usize) -> Option<&Range> {
+        self.ranges.get(index)
     }
     pub fn find(&mut self, length: usize) -> Result<Range, Range> {
         let mut least_larger_index: Option<usize> = None;
@@ -81,32 +85,42 @@ impl Ranges {
     pub fn free(&mut self, to_free: Range) {
         if self.ranges.is_empty() {
             self.ranges.push(to_free);
+            self.validate();
             return;
         }
         let mut j = self.ranges.len();
         let mut extended: Option<usize> = None;
         let mut consolidated: Option<usize> = None;
         for (i, range) in self.ranges.iter_mut().enumerate() {
+            debug!("checking range {} {:?} > {:?}", i, range, to_free);
             if extended.is_some() {
+                debug!("extended range. Does it reach next range?");
                 if range.start == to_free.end {
+                    debug!("yes: consolidating range start {} {:?} > {:?}", i, range, to_free);
                     consolidated = Some(i);
                     break;
                 }
+                debug!("no; finishing");
+                self.validate();
                 return;
             }
             if range.end < to_free.start {
                 continue;
             }
             if range.start == to_free.end {
+                debug!("extending range start {} {:?} > {:?}", i, range, to_free);
                 range.start = to_free.start;
+                self.validate();
                 return;
             }
             if range.end == to_free.start {
+                debug!("extending range end {} {:?} > {:?}", i, range, to_free);
                 range.end = to_free.end;
                 extended = Some(i);
                 continue;
             }
             if range.start > to_free.end {
+                debug!("inserting range {} {:?} > {:?}", i, range, to_free);
                 j = i;
                 break;
             }
@@ -116,10 +130,30 @@ impl Ranges {
             let extended_range = self.ranges.get_mut(extended.unwrap()).unwrap();
             extended_range.end = consolidated_range.end;
             self.ranges.remove(consolidated.unwrap());
+            self.validate();
             return
         }
-        self.ranges.insert(j, to_free);
+        if extended.is_none() {
+            self.ranges.insert(j, to_free);
+        }
+        self.validate();
     }
+
+    #[cfg(debug_assertions)]
+    fn validate(&self) {
+        if self.ranges.len() < 2 {
+            return;
+        }
+        for (i, r) in self.ranges[1..self.ranges.len()].iter().enumerate() {
+            let previous = &self.ranges[i];
+            debug!("validating range {} {:?} > {:?}", i+1, r, previous);
+            assert!(r.start >= previous.end);
+            assert!(r.end <= self.highest);
+        }
+    }
+
+    #[cfg(not (debug_assertions))]
+    fn validate(&self) {}
 }
 
 #[cfg(test)]
