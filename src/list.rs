@@ -1,15 +1,10 @@
 use crate::range::Range;
 use crate::strings::Strings;
-use bincode::{decode_from_std_read,encode_into_std_write,Encode,Decode,config::Config};
+use crate::error::Error;
+use crate::datasource::DataSource;
 use log::debug;
 
-fn bcconfig() -> impl Config {
-    bincode::config::standard()
-        .with_little_endian()
-        .with_fixed_int_encoding()
-}
-
-#[derive(Debug,Default,Encode,Decode)]
+#[derive(Debug,Default)]
 pub struct List {
     strings: Strings,
     rank: Vec<Range>,
@@ -27,27 +22,6 @@ pub fn left(parent: usize) -> usize {
 pub fn right(parent: usize) -> usize {
     parent * 2 + 2
 }
-
-#[derive(Debug)]
-pub struct ListError {
-    message: String,
-}
-
-impl std::fmt::Display for ListError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for ListError {}
-impl ListError {
-    pub fn new(message: &str) -> ListError {
-        ListError {
-            message: message.to_string(),
-        }
-    }
-}
-
 impl List {
     pub fn new() -> List {
         List {
@@ -61,11 +35,18 @@ impl List {
         &self.strings
     }
 
-    pub fn load(path: &std::path::PathBuf) -> Result<List,ListError> {
-        let mut file = std::fs::File::open(path)
-            .map_err(|e| ListError::new(&format!("could not open file: {:?}", e)))?;
-         decode_from_std_read(&mut file, bcconfig())
-            .map_err(|e| ListError::new(&format!("could not deserialize file: {:?}", e)))
+    pub fn load(data: &dyn DataSource) -> Result<List,Error> {
+        let mut strings = Strings::new();
+        let mut rank = Vec::new();
+        for string in data.load()? {
+            let range = strings.add(&string);
+            rank.push(range);
+        }
+        Ok(List {
+            strings,
+            rank,
+            dirty: false,
+        })
     }
 
     fn used_ranges_len(&self) -> usize {
@@ -93,19 +74,12 @@ impl List {
         self.rank = new_rank;
         self.dirty = true;
     }
-    pub fn save(&self, path: &std::path::PathBuf) -> Result<(),ListError> {
+    pub fn save(&self, data: &dyn DataSource) -> Result<(),Error> {
         if !self.dirty {
             return Ok(());
         }
-        let dir = path.parent().ok_or_else(|| ListError::new("could not get parent directory"))?;
-        if !dir.exists() {
-            std::fs::create_dir_all(dir)
-                .map_err(|e| ListError::new(&format!("could not create directory: {:?}", e)))?;
-        }
-        let mut file = std::fs::File::create(path)
-            .map_err(|e| ListError::new(&format!("could not create file: {:?}", e)))?;
-        let _ = encode_into_std_write(self, &mut file, bcconfig())
-            .map_err(|e| ListError::new(&format!("could not serialize file: {:?}", e)))?;
+        let strings = self.iter().map(|s| s.to_string()).collect();
+        data.save(strings)?;
         Ok(())
     }
 
@@ -141,17 +115,17 @@ impl List {
         Cursor::new(self, index, Direction::Promote)
     }
 
-    pub fn complete(&mut self) -> Result<Cursor, ListError> {
+    pub fn complete(&mut self) -> Result<Cursor, Error> {
         if self.rank.is_empty() {
-            return Err(ListError::new("no tasks to complete"));
+            return Err(Error::new("no tasks to complete"));
         }
         debug!("completing root");
         self.delete(0)
     }
 
-    pub fn delete(&mut self, index: usize) -> Result<Cursor,ListError> {
+    pub fn delete(&mut self, index: usize) -> Result<Cursor,Error> {
         if index >= self.rank.len() {
-            return Err(ListError::new("index out of range"));
+            return Err(Error::new("index out of range"));
         }
         debug!("freeing string at index {} range {:?}", index, self.rank[index]);
         self.strings.free(self.rank[index]);

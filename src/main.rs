@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use nextup::{questionnaire,List};
+use nextup::datasource::bincode::Bincode;
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
@@ -66,7 +67,10 @@ fn main() {
             }
         };
 
-    let mut list = match List::load(&dbfile) {
+    let bc = Bincode {
+        path: dbfile.clone(),
+    };
+    let mut list = match List::load(&bc) {
         Ok(list) => list,
         Err(_) => List::new(),
     };
@@ -126,7 +130,7 @@ fn main() {
     if list.should_repack() {
         list.repack();
     }
-    let saved = list.save(&dbfile);
+    let saved = list.save(&bc);
     if let Err(e) = saved {
         eprintln!("Error saving list: {}", e);
     }
