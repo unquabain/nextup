@@ -16,5 +16,10 @@ impl Error {
             message: message.to_string(),
         }
     }
+    pub fn from_error(e: impl std::error::Error) -> Error {
+        Error {
+            message: e.to_string(),
+        }
+    }
 }
 

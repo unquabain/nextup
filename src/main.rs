@@ -1,14 +1,13 @@
 use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use nextup::{questionnaire,List};
-use nextup::datasource::bincode::Bincode;
+use nextup::config::Config;
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
     Inspect,
     Nuke,
     DBPath,
-    Repack,
 }
 
 #[derive(Subcommand, Debug)]
@@ -30,17 +29,24 @@ enum SubCommand {
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[arg(short, long, value_name="DIR")]
-    list: Option<String>,
-
     #[arg(short, long)]
-    db: Option<PathBuf>,
+    config: Option<PathBuf>,
 
     #[arg(short='g', long)]
     debug: bool,
 
     #[command(subcommand)]
     subcommand: Option<SubCommand>,
+}
+
+impl Args {
+    pub fn config(&self) -> Config {
+        match &self.config {
+            Some(path) => Config::from_filepath(path).unwrap_or_default(),
+            None => Config::default(),
+        }
+    }
+    
 }
 
 
@@ -52,25 +58,9 @@ fn main() {
         .filter(None, if args.debug { LevelFilter::Debug } else { LevelFilter::Info })
         .init();
 
-    let dbfile = 
-        match args.db {
-            Some(path) => path,
-            None => {
-                let mut path = dirs::config_dir().unwrap();
-                path.push("nextup");
-                match args.list {
-                    Some(list) => path.push(list),
-                    None => path.push("default"),
-                }
-                path.push("list");
-                path
-            }
-        };
-
-    let bc = Bincode {
-        path: dbfile.clone(),
-    };
-    let mut list = match List::load(&bc) {
+    let config = args.config();
+    let mut ds = config.data_source().unwrap();
+    let mut list = match List::load(ds.as_mut()) {
         Ok(list) => list,
         Err(_) => List::new(),
     };
@@ -95,14 +85,11 @@ fn main() {
                     }
                 },
                 DebugCommands::DBPath => {
-                    println!("{}", dbfile.display());
+                    println!("{:?}", ds);
                 },
                 DebugCommands::Nuke => {
-                    std::fs::remove_file(&dbfile).unwrap();
+                    ds.nuke().unwrap();
                     list = List::new();
-                },
-                DebugCommands::Repack => {
-                    list.repack();
                 },
             },
         Some(SubCommand::Add { task }) => {
@@ -130,7 +117,7 @@ fn main() {
     if list.should_repack() {
         list.repack();
     }
-    let saved = list.save(&bc);
+    let saved = list.save(ds.as_mut());
     if let Err(e) = saved {
         eprintln!("Error saving list: {}", e);
     }

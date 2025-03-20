@@ -35,7 +35,7 @@ impl List {
         &self.strings
     }
 
-    pub fn load(data: &dyn DataSource) -> Result<List,Error> {
+    pub fn load(data: &mut dyn DataSource) -> Result<List,Error> {
         let mut strings = Strings::new();
         let mut rank = Vec::new();
         for string in data.load()? {
@@ -74,7 +74,7 @@ impl List {
         self.rank = new_rank;
         self.dirty = true;
     }
-    pub fn save(&self, data: &dyn DataSource) -> Result<(),Error> {
+    pub fn save(&mut self, data: &mut dyn DataSource) -> Result<(),Error> {
         if !self.dirty {
             return Ok(());
         }

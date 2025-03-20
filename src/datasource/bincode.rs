@@ -9,12 +9,14 @@ fn bcconfig() -> impl Config {
         .with_little_endian()
         .with_fixed_int_encoding()
 }
+
+#[derive(Debug)]
 pub struct Bincode {
     pub path: PathBuf,
 }
 
 impl DataSource for Bincode {
-    fn load(&self) -> Result<Vec<String>, Error> {
+    fn load(&mut self) -> Result<Vec<String>, Error> {
         let mut file = std::fs::File::open(&self.path)
             .map_err(|e| Error::new(&format!("could not open file: {:?}", e)))?;
         let strings: Vec<String> =
@@ -23,7 +25,7 @@ impl DataSource for Bincode {
         Ok(strings)
     }
 
-    fn save(&self, data: Vec<String>) -> Result<(), Error>{
+    fn save(&mut self, data: Vec<String>) -> Result<(), Error>{
         let dir = self.path.parent().ok_or_else(|| Error::new("could not get parent directory"))?;
         if !dir.exists() {
             std::fs::create_dir_all(dir)
@@ -33,6 +35,11 @@ impl DataSource for Bincode {
             .map_err(|e| Error::new(&format!("could not create file: {:?}", e)))?;
         let _ = encode_into_std_write(data, &mut file, bcconfig())
             .map_err(|e| Error::new(&format!("could not serialize file: {:?}", e)))?;
+        Ok(())
+    }
+    fn nuke(&mut self) -> Result<(), Error> {
+        std::fs::remove_file(&self.path)
+            .map_err(|e| Error::new(&format!("could not remove file: {:?}", e)))?;
         Ok(())
     }
 }

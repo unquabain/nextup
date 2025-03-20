@@ -4,6 +4,7 @@ pub mod strings;
 pub mod list;
 pub mod ui;
 pub mod datasource;
+pub mod config;
 
 pub use list::List;
 pub use ui::questionnaire;

@@ -1,8 +1,10 @@
 pub mod bincode;
+pub mod postgres;
 
 use crate::error::Error;
 
-pub trait DataSource {
-    fn load(&self) -> Result<Vec<String>, Error>;
-    fn save(&self, data: Vec<String>) -> Result<(), Error>;
+pub trait DataSource : std::fmt::Debug {
+    fn load(&mut self) -> Result<Vec<String>, Error>;
+    fn save(&mut self, data: Vec<String>) -> Result<(), Error>;
+    fn nuke(&mut self) -> Result<(), Error>;
 }
