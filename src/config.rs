@@ -91,6 +91,37 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn filepath_or_default(path: &Option<PathBuf>) -> Option<PathBuf> {
+        if path.is_some() {
+            return path.clone()
+        }
+        let mut path = PathBuf::from("./.nextup.toml");
+        if path.exists() {
+            return Some(path)
+        }
+        path = PathBuf::from("./.nextup.conf");
+        if path.exists() {
+            return Some(path)
+        }
+        path = dirs::config_dir().unwrap_or("./".into());
+        path.push("nextup");
+        path.push("config.toml");
+        if path.exists() {
+            return Some(path)
+        }
+        path.pop();
+        path.push("config.conf");
+        if path.exists() {
+            return Some(path)
+        }
+        path = PathBuf::from("/etc/nextup.toml");
+        if path.exists() {
+            return Some(path)
+        }
+        path.pop();
+        path.push("nextup.conf");
+        None
+    }
     pub fn from_read(read: &mut impl std::io::Read) -> Result<Self, Error> {
         let mut s = String::new();
         read.read_to_string(&mut s).map_err(|e| { Error::from_error(e) })?;

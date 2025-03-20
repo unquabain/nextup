@@ -8,6 +8,7 @@ enum DebugCommands {
     Inspect,
     Nuke,
     DBPath,
+    ConfigPath,
 }
 
 #[derive(Subcommand, Debug)]
@@ -41,8 +42,9 @@ struct Args {
 
 impl Args {
     pub fn config(&self) -> Config {
-        match &self.config {
-            Some(path) => Config::from_filepath(path).unwrap_or_default(),
+        let path = Config::filepath_or_default(&self.config);
+        match path {
+            Some(resolved) => Config::from_filepath(&resolved).unwrap_or_default(),
             None => Config::default(),
         }
     }
@@ -86,6 +88,20 @@ fn main() {
                 },
                 DebugCommands::DBPath => {
                     println!("{:?}", ds);
+                },
+                DebugCommands::ConfigPath => {
+                    match Config::filepath_or_default(&args.config) {
+                        Some(path) => println!("{:?}", path),
+                        None => {
+                            println!("No config file found");
+                            println!("Try creating one in one of the following locations:");
+                            println!("- ./.nextup.toml");
+                            println!("- ./.nextup.conf");
+                            println!("- {}/nextup/config.toml", dirs::config_dir().unwrap_or("./".into()).to_string_lossy());
+                            println!("- {}/nextup/config.conf", dirs::config_dir().unwrap_or("./".into()).to_string_lossy());
+                            println!("- /etc/nextup.toml");
+                        },
+                    }
                 },
                 DebugCommands::Nuke => {
                     ds.nuke().unwrap();
