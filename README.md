@@ -14,19 +14,32 @@ This is very similar to the web version you can find [on my website](https://www
 
 Most importantly, the `--help` option shows you all the options and subcommands that are available.
 
-You can manage multiple lists with the `--list` option.
-
-```
-nextup --list personal
-```
-
-Alternately, you can specify the full path to a database file of your choosing with the `--db` option.
-
-```
-nextup --db $HOME/lists/hit
-```
-
 The `--debug` option turns on my rather capricious debug logging.
+
+### Configuration
+
+You can specify the configuration file with `--config`. Or, if you pass it the `debug config-path` subcommand,
+it will show you all the default places where it looks for a config file.
+
+The config file might look like this:
+
+```toml
+data_source = "postgres"
+list = "default"
+
+[bincode]
+path = "./"
+
+[postgres]
+connection_string = "postgres://benforsberg@localhost:5432/benforsberg"
+```
+
+The `data_source` field can be set to `bincode` or `postgres`.
+
+If it's set to `bincode`, the `bincode` section will be used to configure the path to the database file.
+The `list` parameter will become a file at the location specified by `path`.
+
+If it's set to `postgres`, the `postgres` section will be used to configure the connection string to the database. 
 
 ## Basic commands
 
@@ -108,14 +121,6 @@ nextup debug nuke
 ```
 
 This deletes the data file, in case things have gone irreparably bad somehow.
-
-#### Repack
-
-```
-nextup debug repack
-```
-
-If the strings table has too much empty space in it, Nextup will automatically compact it for you. You can force this to happen earlier with this command.
 
 #### DB Path
 

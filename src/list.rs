@@ -49,31 +49,6 @@ impl List {
         })
     }
 
-    fn used_ranges_len(&self) -> usize {
-        let mut sum = 0;
-        for range in &self.rank {
-            sum += range.len();
-        }
-        sum
-    }
-    pub fn should_repack(&self) -> bool {
-        if !self.dirty {
-            return false;
-        }
-        self.strings.strlen() > self.used_ranges_len()*2
-    }
-
-    pub fn repack(&mut self) {
-        let mut new_strings = Strings::new();
-        let mut new_rank = Vec::new();
-        for range in &self.rank {
-            let new_range = new_strings.add(self.strings.get(*range));
-            new_rank.push(new_range);
-        }
-        self.strings = new_strings;
-        self.rank = new_rank;
-        self.dirty = true;
-    }
     pub fn save(&mut self, data: &mut dyn DataSource) -> Result<(),Error> {
         if !self.dirty {
             return Ok(());

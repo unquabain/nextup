@@ -130,9 +130,6 @@ fn main() {
         Some(task) => println!("Next up: {}", task),
         None => println!("All caught up!"),
     }
-    if list.should_repack() {
-        list.repack();
-    }
     let saved = list.save(ds.as_mut());
     if let Err(e) = saved {
         eprintln!("Error saving list: {}", e);
