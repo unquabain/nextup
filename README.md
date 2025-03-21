@@ -111,6 +111,14 @@ nextup delete 5
 
 Nextup will need to ask you about a few of your remaining tasks to figure out how to fill the gap.
 
+### Replace
+
+If you want to replace a task with a new one, you can use the `replace` subcommand.
+
+```
+nextup replace 5 "Fire Roger; he's worse than Jeffrey."
+```
+
 ### Debug
 
 The debug command groups together some low-level maintenance tools.

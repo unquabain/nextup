@@ -31,6 +31,13 @@ enum SubCommand {
     Add {
         task: String,
     },
+
+    /// Replaces the description of a task by index: use `nextup list` to find the index
+    Replace {
+        index: usize,
+        task: String,
+    },
+
     /// Completes the next task: may ask you some ranking questions
     Complete,
 
@@ -154,6 +161,9 @@ fn main() {
         Some(SubCommand::Add { task }) => {
             let mut cursor = list.add(&task);
             questionnaire(&mut cursor).unwrap();
+        },
+        Some(SubCommand::Replace { index, task }) => {
+            list.replace(index-1, &task).unwrap();
         },
         Some(SubCommand::Complete) => {
             let mut cursor = list.complete().unwrap();
