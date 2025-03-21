@@ -41,6 +41,9 @@ The `list` parameter will become a file at the location specified by `path`.
 
 If it's set to `postgres`, the `postgres` section will be used to configure the connection string to the database. 
 
+The `--list` option allows you to override the list specified in the configuration file (or the default list if
+non is specified or no configuration file is found).
+
 ## Basic commands
 
 ### Help
@@ -91,6 +94,12 @@ nextup list
 The list won't be exactly sorted. Your top priority will be ranked #1. Your next two priorities will be numbers #2 and #3, but not necessarily in any particular order. Next, your four, third-tier tasks will appear jumbled up as items #4 through #8, and so on.
 
 If there's something in the list that is no longer relevant, you can always:
+
+### List Lists
+
+If the data source supports multiple lists (e.g. postgres), you can issue `nextup list-lists` to see all the lists available.
+
+Add `--list` to subsequent commands to operate on the contents of a specific list.
 
 ### Delete
 

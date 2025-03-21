@@ -5,24 +5,46 @@ use nextup::config::Config;
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
+    /// Inspect the current state of the list and strings
     Inspect,
+
+    /// Nuke the database
     Nuke,
+
+    /// Inspect the data source
     DBPath,
+
+    /// Display the path to the config file file, if one is found,
+    /// or suggest locations to create one.
     ConfigPath,
 }
 
 #[derive(Subcommand, Debug)]
 enum SubCommand {
+    /// List all tasks in semi-sorted order
     List,
+
+    /// List all lists in the data source
+    ListLists,
+
+    /// Add a new task to the list: may ask you some ranking questions
     Add {
         task: String,
     },
+    /// Completes the next task: may ask you some ranking questions
     Complete,
+
+    /// Defer the next task: may ask you some ranking questions
     Defer,
+
+    /// Debug commands
     Debug {
         #[command(subcommand)]
         subcommand: DebugCommands,
     },
+
+    /// Delete a task by index. Use `nextup list` to find the index: may ask you some ranking
+    /// questions.
     Delete {
         index: usize,
     },
@@ -30,12 +52,19 @@ enum SubCommand {
 
 #[derive(Parser, Debug)]
 struct Args {
+    /// Use a list other than the default specified in the config
+    #[arg(short, long)]
+    list: Option<String>,
+
+    /// Use a config file other than the default
     #[arg(short, long)]
     config: Option<PathBuf>,
 
+    /// Enable my capricious debug output
     #[arg(short='g', long)]
     debug: bool,
 
+    /// If no command is given, print the next task
     #[command(subcommand)]
     subcommand: Option<SubCommand>,
 }
@@ -43,10 +72,14 @@ struct Args {
 impl Args {
     pub fn config(&self) -> Config {
         let path = Config::filepath_or_default(&self.config);
-        match path {
+        let mut cfg = match path {
             Some(resolved) => Config::from_filepath(&resolved).unwrap_or_default(),
             None => Config::default(),
+        };
+        if self.list.is_some() {
+            cfg.list.replace_range(.., self.list.as_ref().unwrap());
         }
+        cfg
     }
     
 }
@@ -67,13 +100,22 @@ fn main() {
         Err(_) => List::new(),
     };
 
+    let mut suppress = false;
     match args.subcommand {
         Some(SubCommand::List) => {
             for (i, task) in list.iter().enumerate() {
                 println!("{}: {}", i+1, task);
             }
         },
-        Some(SubCommand::Debug {subcommand}) =>
+        Some(SubCommand::ListLists) => {
+            let lists = ds.list_lists().unwrap();
+            for list in lists {
+                println!("{}", list);
+            }
+            suppress = true;
+        },
+        Some(SubCommand::Debug {subcommand}) => {
+            suppress = true;
             match subcommand {
                 DebugCommands::Inspect => {
                     println!("Tasks:");
@@ -107,7 +149,8 @@ fn main() {
                     ds.nuke().unwrap();
                     list = List::new();
                 },
-            },
+            }
+        },
         Some(SubCommand::Add { task }) => {
             let mut cursor = list.add(&task);
             questionnaire(&mut cursor).unwrap();
@@ -126,9 +169,11 @@ fn main() {
         },
         None => (),
     }
-    match list.nextup() {
-        Some(task) => println!("Next up: {}", task),
-        None => println!("All caught up!"),
+    if ! suppress {
+        match list.nextup() {
+            Some(task) => println!("Next up: {}", task),
+            None => println!("All caught up!"),
+        }
     }
     let saved = list.save(ds.as_mut());
     if let Err(e) = saved {

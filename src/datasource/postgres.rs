@@ -11,6 +11,7 @@ pub struct DSPostgres {
     fetch_query: Statement,
     clear_query: Statement,
     save_query: Statement,
+    list_list_query: Statement,
 }
 
 impl std::fmt::Debug for DSPostgres {
@@ -29,7 +30,7 @@ impl DSPostgres {
                 match e.code() {
                     Some(&postgres::error::SqlState::UNDEFINED_TABLE) => {
                         client.execute(
-                            "CREATE TABLE IF NOT EXISTS nextup (rank INT UNIQUE, task TEXT, list VARCHAR(255))",
+                            "CREATE TABLE IF NOT EXISTS nextup (rank INT, task TEXT, list VARCHAR(255), UNIQUE (rank, list) )",
                             &[],
                         ) .map_err(Error::from_error)?;
                         client.prepare_typed("SELECT task FROM nextup WHERE list = $1 ORDER BY rank", &[Type::TEXT])
@@ -44,7 +45,9 @@ impl DSPostgres {
         };
         let clear_query = client.prepare_typed("DELETE FROM nextup WHERE list = $1", &[Type::TEXT])
             .map_err(Error::from_error)?;
-        let save_query = client.prepare_typed("INSERT INTO nextup (rank, task, list) VALUES ($1, $2, $3) ON CONFLICT (rank) DO UPDATE SET task = $2", &[Type::INT4, Type::TEXT, Type::TEXT])
+        let save_query = client.prepare_typed("INSERT INTO nextup (rank, task, list) VALUES ($1, $2, $3) ON CONFLICT (list, rank) DO UPDATE SET task = $2", &[Type::INT4, Type::TEXT, Type::TEXT])
+            .map_err(Error::from_error)?;
+        let list_list_query = client.prepare("SELECT DISTINCT list FROM nextup")
             .map_err(Error::from_error)?;
             
         Ok(DSPostgres{
@@ -53,6 +56,7 @@ impl DSPostgres {
             fetch_query,
             clear_query,
             save_query,
+            list_list_query,
         })
     }
 }
@@ -83,6 +87,15 @@ impl DataSource for DSPostgres {
         self.client.execute(&self.clear_query, &[&self.list])
             .map_err(Error::from_error)?;
         Ok(())
+    }
+    fn list_lists(&mut self) -> Result<Vec<String>, Error> {
+        let rows = self.client.query(&self.list_list_query, &[])
+            .map_err(Error::from_error)?;
+        let mut lists = Vec::new();
+        for row in rows {
+            lists.push(row.get(0));
+        }
+        Ok(lists)
     }
 }
 
