@@ -1,4 +1,4 @@
-
+use crate::error::Error;
 
 pub enum Direction {
     Promote,
@@ -7,6 +7,6 @@ pub enum Direction {
 
 pub trait ListRanker {
     fn strings(&self) -> Option<(&str, &str, Option<&str>)>;
-    fn choose(&mut self, choice: i32) -> Result<bool, &'static str>;
+    fn choose(&mut self, choice: i32) -> Result<bool, Error>;
 }
 

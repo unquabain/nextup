@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use nextup::{questionnaire,List};
 use nextup::config::Config;
+use nextup::secret::{add_secret,delete_secret};
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
@@ -54,6 +55,13 @@ enum SubCommand {
     /// questions.
     Delete {
         index: usize,
+    },
+
+    AddSecret {
+        name: String,
+    },
+    DeleteSecret {
+        name: String,
     },
 }
 
@@ -176,6 +184,14 @@ fn main() {
         Some(SubCommand::Defer) => {
             let mut cursor = list.defer();
             questionnaire(&mut cursor).unwrap();
+        },
+        Some(SubCommand::AddSecret { name }) => {
+            suppress = true;
+            add_secret(&name).unwrap();
+        },
+        Some(SubCommand::DeleteSecret { name }) => {
+            suppress = true;
+            delete_secret(&name).unwrap();
         },
         None => (),
     }

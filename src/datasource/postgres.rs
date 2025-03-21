@@ -5,6 +5,7 @@ use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
 use postgres::types::Type;
 use crate::datasource::DataSource;
+use crate::secret::replace_secrets;
 use log::*;
 
 pub struct DSPostgres {
@@ -26,7 +27,9 @@ impl DSPostgres {
     pub fn new(url: &str, list: &str) -> Result<Self, Error> {
         let connector = TlsConnector::new().map_err(Error::from_error)?;
         let connector = MakeTlsConnector::new(connector);
-        let mut client = Client::connect(url, connector)
+        let mut surl = url.to_string();
+        replace_secrets(&mut surl)?;
+        let mut client = Client::connect(&surl, connector)
             .map_err(Error::from_error)?;
         let fetch_query = match client.prepare_typed("SELECT task FROM nextup WHERE list = $1 ORDER BY rank", &[Type::TEXT]) {
             Ok(q) => q,
