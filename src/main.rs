@@ -28,6 +28,9 @@ enum SubCommand {
     /// List all lists in the data source
     ListLists,
 
+    /// Show the next task from all lists
+    All,
+
     /// Add a new task to the list: may ask you some ranking questions
     Add {
         task: String,
@@ -126,6 +129,13 @@ fn main() {
             let lists = ds.list_lists().unwrap();
             for list in lists {
                 println!("{}", list);
+            }
+            suppress = true;
+        },
+        Some(SubCommand::All) => {
+            let tasks = ds.all_first_tasks().unwrap();
+            for (list, task) in tasks {
+                println!("{}: {}", list, task);
             }
             suppress = true;
         },

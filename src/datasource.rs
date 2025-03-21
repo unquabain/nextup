@@ -10,4 +10,7 @@ pub trait DataSource : std::fmt::Debug {
     fn list_lists(&mut self) -> Result<Vec<String>, Error> {
         Ok(vec![])
     }
+    fn all_first_tasks(&mut self) -> Result<Vec<(String,String)>, Error> {
+        Ok(vec![])
+    }
 }

@@ -104,6 +104,14 @@ If the data source supports multiple lists (e.g. postgres), you can issue `nextu
 
 Add `--list` to subsequent commands to operate on the contents of a specific list.
 
+### All
+
+If you want to see all the tasks in your list, you can use the `all` subcommand.
+
+```
+nextup all
+```
+
 ### Delete
 
 Using the number from `nextup list` you can get rid of one task from the middle of your list.

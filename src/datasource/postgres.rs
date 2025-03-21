@@ -15,6 +15,7 @@ pub struct DSPostgres {
     clear_query: Statement,
     save_query: Statement,
     list_list_query: Statement,
+    all_first_tasks_query: Statement,
 }
 
 impl std::fmt::Debug for DSPostgres {
@@ -54,7 +55,9 @@ impl DSPostgres {
             .map_err(Error::from_error)?;
         let save_query = client.prepare_typed("INSERT INTO nextup (rank, task, list) VALUES ($1, $2, $3) ON CONFLICT (list, rank) DO UPDATE SET task = $2", &[Type::INT4, Type::TEXT, Type::TEXT])
             .map_err(Error::from_error)?;
-        let list_list_query = client.prepare("SELECT DISTINCT list FROM nextup")
+        let list_list_query = client.prepare("SELECT DISTINCT list FROM nextup ORDER BY list")
+            .map_err(Error::from_error)?;
+        let all_first_tasks_query = client.prepare("SELECT list, task FROM nextup WHERE rank = 0 ORDER BY list")
             .map_err(Error::from_error)?;
             
         Ok(DSPostgres{
@@ -64,6 +67,7 @@ impl DSPostgres {
             clear_query,
             save_query,
             list_list_query,
+            all_first_tasks_query,
         })
     }
 }
@@ -103,6 +107,15 @@ impl DataSource for DSPostgres {
             lists.push(row.get(0));
         }
         Ok(lists)
+    }
+    fn all_first_tasks(&mut self) -> Result<Vec<(String,String)>, Error> {
+        let rows = self.client.query(&self.all_first_tasks_query, &[])
+            .map_err(Error::from_error)?;
+        let mut tasks = Vec::new();
+        for row in rows {
+            tasks.push((row.get(0), row.get(1)));
+        }
+        Ok(tasks)
     }
 }
 
