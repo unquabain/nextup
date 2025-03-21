@@ -1,6 +1,8 @@
 use crate::error::Error;
 
-use postgres::{Client, Statement, NoTls};
+use postgres::{Client, Statement};
+use native_tls::TlsConnector;
+use postgres_native_tls::MakeTlsConnector;
 use postgres::types::Type;
 use crate::datasource::DataSource;
 use log::*;
@@ -22,7 +24,9 @@ impl std::fmt::Debug for DSPostgres {
 
 impl DSPostgres {
     pub fn new(url: &str, list: &str) -> Result<Self, Error> {
-        let mut client = Client::connect(url, NoTls)
+        let connector = TlsConnector::new().map_err(Error::from_error)?;
+        let connector = MakeTlsConnector::new(connector);
+        let mut client = Client::connect(url, connector)
             .map_err(Error::from_error)?;
         let fetch_query = match client.prepare_typed("SELECT task FROM nextup WHERE list = $1 ORDER BY rank", &[Type::TEXT]) {
             Ok(q) => q,
