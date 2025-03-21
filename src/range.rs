@@ -1,8 +1,7 @@
 use std::ops::{Bound, RangeBounds};
-use bincode::{Encode,Decode};
 use log::debug;
 
-#[derive(Debug,Default,Copy,Clone,Encode,Decode)]
+#[derive(Debug,Default,Copy,Clone)]
 pub struct Range {
     pub start: usize,
     pub end: usize,
@@ -29,7 +28,7 @@ impl RangeBounds<usize> for Range {
     }
 }
 
-#[derive(Debug,Default,Encode,Decode)]
+#[derive(Debug,Default)]
 pub struct Ranges {
     ranges: Vec<Range>,
     highest: usize,

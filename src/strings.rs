@@ -1,8 +1,7 @@
 use crate::range::{Range,Ranges};
-use bincode::{Encode,Decode};
 use log::debug;
 
-#[derive(Debug,Default,Encode,Decode)]
+#[derive(Debug,Default)]
 pub struct Strings {
     free_ranges: Ranges,
     strings: String,

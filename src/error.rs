@@ -1,0 +1,25 @@
+#[derive(Debug)]
+pub struct Error {
+    message: String,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for Error {}
+impl Error {
+    pub fn new(message: &str) -> Error {
+        Error {
+            message: message.to_string(),
+        }
+    }
+    pub fn from_error(e: impl std::error::Error) -> Error {
+        Error {
+            message: e.to_string(),
+        }
+    }
+}
+
