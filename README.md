@@ -31,7 +31,7 @@ list = "default"
 path = "./"
 
 [postgres]
-connection_string = "postgres://benforsberg@localhost:5432/benforsberg"
+connection_string = "postgres://benforsberg:{{ my_password }}@localhost:5432/benforsberg"
 ```
 
 The `data_source` field can be set to `bincode` or `postgres`.
@@ -40,6 +40,9 @@ If it's set to `bincode`, the `bincode` section will be used to configure the pa
 The `list` parameter will become a file at the location specified by `path`.
 
 If it's set to `postgres`, the `postgres` section will be used to configure the connection string to the database. 
+
+You can use the syntax `{{ my_password }}` to indicate that the password should be read from your OS key store.
+You can use the `nextup add-secret my_password` command to enter it.
 
 The `--list` option allows you to override the list specified in the configuration file (or the default list if
 non is specified or no configuration file is found).
@@ -118,6 +121,19 @@ If you want to replace a task with a new one, you can use the `replace` subcomma
 ```
 nextup replace 5 "Fire Roger; he's worse than Jeffrey."
 ```
+
+### Add Secret
+
+Use `nextup add-secret SECRET_NAME` to add a secret to the key store. You can use this in your
+Postgres connection string like this:
+
+```toml
+[postgres]
+connection_string = "postgres://benforsberg:{{ SECRET_NAME }}@localhost:5432/benforsberg"
+```
+
+When you do this, your OS will ask you for your password when you use it. There is usually a way
+to cache this for some reasonable timeout so you aren't bugged each time.
 
 ### Debug
 

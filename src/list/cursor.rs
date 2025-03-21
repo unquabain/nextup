@@ -1,5 +1,6 @@
 use crate::list::{List, ListRanker, parent, left, right};
 use crate::list::Direction;
+use crate::error::Error;
 use log::debug;
 
 pub struct Cursor<'list> {
@@ -61,7 +62,7 @@ impl ListRanker for Cursor<'_> {
             Direction::Demote => self.strings_for_demotion(),
         }
     }
-    fn choose(&mut self, choice: i32) -> Result<bool, &'static str> {
+    fn choose(&mut self, choice: i32) -> Result<bool, Error> {
         debug!("chose {}", choice);
         match choice {
             0 => Ok(false),
@@ -73,10 +74,10 @@ impl ListRanker for Cursor<'_> {
 
             2 => match self.direction {
                 Direction::Demote => Ok(self.demote_right()),
-                _ => Err("Invalid choice"),
+                _ => Err(Error::new("Invalid choice")),
             },
 
-            _ => Err("Invalid choice"),
+            _ => Err(Error::new("Invalid choice")),
         }
     }
 }

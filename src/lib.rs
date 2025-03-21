@@ -5,6 +5,7 @@ pub mod list;
 pub mod ui;
 pub mod datasource;
 pub mod config;
+pub mod secret;
 
 pub use list::List;
 pub use ui::questionnaire;
