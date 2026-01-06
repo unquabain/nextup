@@ -98,7 +98,7 @@ impl List {
         Cursor::new(self, index, Direction::Promote)
     }
 
-    pub fn complete(&mut self) -> Result<Cursor, Error> {
+    pub fn complete<'list>(&'list mut self) -> Result<Cursor<'list>, Error> {
         if self.rank.is_empty() {
             return Err(Error::new("no tasks to complete"));
         }
@@ -106,7 +106,7 @@ impl List {
         self.delete(0)
     }
 
-    pub fn delete(&mut self, index: usize) -> Result<Cursor,Error> {
+    pub fn delete<'list>(&'list mut self, index: usize) -> Result<Cursor<'list>,Error> {
         if index >= self.rank.len() {
             return Err(Error::new("index out of range"));
         }
@@ -120,7 +120,7 @@ impl List {
         Ok(Cursor::new(self, index, Direction::Demote))
     }
 
-    pub fn defer(&mut self) -> Cursor {
+    pub fn defer<'list>(&'list mut self) -> Cursor<'list> {
         debug!("demoting root");
         Cursor::new(self, 0, Direction::Demote)
     }
@@ -137,7 +137,7 @@ impl List {
         Ok(())
     }
 
-    pub fn iter(&self) -> ListIterator {
+    pub fn iter<'list>(&'list self) -> ListIterator<'list> {
         ListIterator::new(self)
     }
 }

@@ -140,7 +140,7 @@ impl Strings {
         self.strings.len()
     }
 
-    pub fn iter(&self) -> StringsInspector {
+    pub fn iter<'s>(&'s self) -> StringsInspector<'s> {
         StringsInspector::new(self)
     }
     pub fn get(&self, range: Range) -> &str {
