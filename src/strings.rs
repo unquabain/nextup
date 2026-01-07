@@ -1,6 +1,15 @@
 use crate::range::{Range,Ranges};
 use log::debug;
 
+// This is perhaps over-engineered, but Vec doesn't seem to have a clean way
+// to swap strings without re-allocation. I could do the same thing with
+// a Vec<String> and a Vec<usize> for the order, but this already works
+// and has tests.
+//
+// Basically, I'm writing an allocator. It's the same idea as a linked-list
+// allocator, but I'm storing the free ranges in a separate variable because
+// I hadn't read about linked-list allocators when I wrote this.
+
 #[derive(Debug,Default)]
 pub struct Strings {
     free_ranges: Ranges,

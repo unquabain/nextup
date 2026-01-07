@@ -1,7 +1,7 @@
 use std::ops::{Bound, RangeBounds};
 use log::debug;
 
-#[derive(Debug,Default,Copy,Clone)]
+#[derive(Debug,Default,Copy,Clone, PartialEq, Eq)]
 pub struct Range {
     pub start: usize,
     pub end: usize,
@@ -11,11 +11,49 @@ impl Range {
     pub fn new(start: usize, end: usize) -> Range {
         Range { start, end }
     }
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.end - self.start
     }
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.start == self.end
+    }
+    fn is_extended_by(&self, other: &Range) -> bool {
+        self.end == other.start
+    }
+    fn extends(&self, other: &Range) -> bool{
+        other.is_extended_by(self)
+    }
+    fn is_contiguous(&self, other: &Range) -> bool {
+        self.is_extended_by(other) || self.extends(other)
+    }
+    fn extend(&mut self, other: &Range) {
+        if self.is_extended_by(other) {
+            self.end = other.end;
+        } else if self.extends(other) {
+            self.start = other.start;
+        }
+    }
+
+    fn maybe_extend(&mut self, other: Option<&Range>) -> bool {
+        match other {
+            Some(r) if self.is_contiguous(r) => {
+                self.extend(r);
+                true
+            },
+            _ => false,
+        }
+    }
+}
+
+impl Ord for Range {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.start.cmp(&other.start)
+    }
+}
+
+impl PartialOrd for Range {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -34,6 +72,12 @@ pub struct Ranges {
     highest: usize,
 }
 
+enum RangesFreeOp {
+    Overwrite(usize), // Replace range at index
+    Shorten(usize), // Replace range at index and remove next
+    Extend(usize), // Insert before index
+    Push, // Insert at end
+}
 
 impl Ranges {
     pub fn new() -> Ranges {
@@ -81,61 +125,63 @@ impl Ranges {
         self.highest
     }
 
-    pub fn free(&mut self, to_free: Range) {
+    pub fn free(&mut self, mut to_free: Range) {
         if self.ranges.is_empty() {
             self.ranges.push(to_free);
             self.validate();
             return;
         }
-        let mut j = self.ranges.len();
-        let mut extended: Option<usize> = None;
-        let mut consolidated: Option<usize> = None;
-        for (i, range) in self.ranges.iter_mut().enumerate() {
-            debug!("checking range {} {:?} > {:?}", i, range, to_free);
-            if extended.is_some() {
-                debug!("extended range. Does it reach next range?");
-                if range.start == to_free.end {
-                    debug!("yes: consolidating range start {} {:?} > {:?}", i, range, to_free);
-                    consolidated = Some(i);
-                    break;
-                }
-                debug!("no; finishing");
-                self.validate();
-                return;
+
+        // Find the next range after the one being freed.
+        let next_idx = self.ranges.iter().position(|r| r > &to_free);
+        let next = next_idx
+            .and_then(|idx| self.ranges.get(idx));
+
+        // Find the previous range before the one being freed.
+        let prev_idx = match next_idx {
+            None => Some(self.ranges.len() - 1),
+            Some(0) => None,
+            Some(n) => Some(n - 1),
+        };
+        let prev = prev_idx.and_then(|idx| self.ranges.get(idx));
+
+        // Determine the operation to perform based on contiguity.
+        let operation = if to_free.maybe_extend(prev) {
+            if to_free.maybe_extend(next) {
+                // Logically, prev_idx must be Some here.
+                RangesFreeOp::Shorten(prev_idx.unwrap_or_default())
+            } else {
+                // Logically, prev_idx must be Some here.
+                RangesFreeOp::Overwrite(prev_idx.unwrap_or_default())
             }
-            if range.end < to_free.start {
-                continue;
+        } else if to_free.maybe_extend(next) {
+            // Logically, next_idx must be Some here.
+            RangesFreeOp::Overwrite(next_idx.unwrap_or_default())
+        } else {
+            match next_idx {
+                Some(idx) => {
+                    RangesFreeOp::Extend(idx)
+                },
+                None => {
+                    RangesFreeOp::Push
+                },
             }
-            if range.start == to_free.end {
-                debug!("extending range start {} {:?} > {:?}", i, range, to_free);
-                range.start = to_free.start;
-                self.validate();
-                return;
-            }
-            if range.end == to_free.start {
-                debug!("extending range end {} {:?} > {:?}", i, range, to_free);
-                range.end = to_free.end;
-                extended = Some(i);
-                continue;
-            }
-            if range.start > to_free.end {
-                debug!("inserting range {} {:?} > {:?}", i, range, to_free);
-                j = i;
-                break;
-            }
+        };
+        match operation {
+            RangesFreeOp::Overwrite(idx) => {
+                self.ranges[idx] = to_free;
+            },
+            RangesFreeOp::Shorten(idx) => {
+                self.ranges[idx] = to_free;
+                self.ranges.remove(idx + 1);
+            },
+            RangesFreeOp::Extend(idx) => {
+                self.ranges.insert(idx, to_free);
+            },
+            RangesFreeOp::Push => {
+                self.ranges.push(to_free);
+            },
         }
-        if extended.is_some() && consolidated.is_some() {
-            let consolidated_range = *self.ranges.get(consolidated.unwrap()).unwrap();
-            let extended_range = self.ranges.get_mut(extended.unwrap()).unwrap();
-            extended_range.end = consolidated_range.end;
-            self.ranges.remove(consolidated.unwrap());
-            self.validate();
-            return
-        }
-        if extended.is_none() {
-            self.ranges.insert(j, to_free);
-        }
-        self.validate();
     }
 
     #[cfg(debug_assertions)]
