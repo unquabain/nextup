@@ -14,27 +14,50 @@ fn themed_siv() -> Cursive {
 
 pub fn questionnaire(ranker: &mut impl ListRanker) -> Result<(),Error> {
     loop {
-        let strings = ranker.strings();
-        if strings.is_none() {
-            break;
-        }
-        let strings = strings.unwrap();
+        let strings = match ranker.strings() {
+            None => break,
+            Some(s) => s,
+        };
         let choice: Arc<OnceLock::<i32>> = Arc::new(OnceLock::new());
-        let choice_zero = choice.clone();
-        let choice_one = choice.clone();
-        let choice_two = choice.clone();
+        let mut dlg = Dialog::around(TextView::new("Which of these tasks is the most urgent?"));
 
-        let mut dlg = Dialog::around(TextView::new("Which of these tasks is the most urgent?"))
-            .button(strings.0, move |s| { debug!("chose 0"); choice_zero.set(0).unwrap(); s.quit(); })
-            .button(strings.1, move |s| { debug!("chose 1"); choice_one.set(1).unwrap(); s.quit(); });
+        macro_rules! add_button {
+            (label: $label:expr, index: $idx:expr) => {
+                dlg.add_button(
+                    $label,
+                    {
+                        let choice = choice.clone();
+                        move |s| {
+                            debug!("chose {}", $idx);
+                            match choice.set($idx) {
+                                Ok(_) => {},
+                                Err(_) => s.set_user_data(Error::ChoiceAlreadySet),
+                            }
+                            s.quit();
+                        }
+                    }
+                );
+            };
+        }
+
+
+        add_button!(label: strings.0, index: 0);
+        add_button!(label: strings.1, index: 1);
         if let Some(right) = strings.2 {
-            dlg.add_button(right, move |s| { debug!("chose 2"); choice_two.set(2).unwrap(); s.quit(); });
+            add_button!(label: right, index: 2);
         }
         let mut siv = themed_siv();
         siv.add_layer(Layer::new(dlg));
         siv.run();
 
-        let choice = choice.get().unwrap();
+        if let Some(err) = siv.take_user_data::<Error>() {
+            return Err(err);
+        }
+
+        let choice = match choice.get() {
+            Some(c) => c,
+            None => return Err(Error::NoChoiceMade),
+        };
         if ! ranker.choose(*choice)? {
             break;
         }
@@ -58,18 +81,32 @@ pub fn get_secret(name: &str) -> Result<String, Error> {
             .fixed_width(20),
         )
         .button("Ok", move |s| {
-            let name = s
-                .call_on_name("secret", |view: &mut EditView| view.get_content())
-                .unwrap();
-            set_secret.set(name.to_string().clone()).unwrap();
+            let name = match s.call_on_name("secret", |view: &mut EditView| view.get_content()) {
+                Some(n) => n,
+                None => {
+                    s.set_user_data(Error::NoSecretEntered);
+                    s.quit();
+                    return;
+                }
+            };
+            match set_secret.set(name.to_string().clone()) {
+                Ok(_) => {},
+                Err(_) => s.set_user_data(Error::ChoiceAlreadySet),
+            }
             s.quit();
         }),
     );
     siv.run();
+    if let Some(err) = siv.take_user_data::<Error>() {
+        return Err(err);
+    }
     let secret = secret.get();
     if secret.is_none() {
-        return Err(Error::new("No secret entered"));
+        return Err(Error::NoSecretEntered);
     }
     debug!("got secret");
-    Ok(secret.unwrap().clone())
+    match secret {
+        Some(s) => Ok(s.clone()),
+        None => Err(Error::NoSecretEntered),
+    }
 }

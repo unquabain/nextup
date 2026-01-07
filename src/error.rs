@@ -1,25 +1,25 @@
-#[derive(Debug)]
-pub struct Error {
-    message: String,
+use thiserror::Error as ThisError;
+#[derive(Debug, ThisError)]
+pub enum Error {
+    #[error("Error: {0}")]
+    Message(String),
+
+    #[error("Choice already set")]
+    ChoiceAlreadySet,
+
+     #[error("No choice made")]
+    NoChoiceMade,
+
+    #[error("No secret entered")]
+    NoSecretEntered,
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for Error {}
 impl Error {
     pub fn new(message: &str) -> Error {
-        Error {
-            message: message.to_string(),
-        }
+        Self::Message(message.to_string())
     }
     pub fn from_error(e: impl std::error::Error) -> Error {
-        Error {
-            message: e.to_string(),
-        }
+        Self::new(&e.to_string())
     }
 }
 
