@@ -103,7 +103,8 @@ impl Args {
 }
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
 
     use log::LevelFilter;
@@ -178,26 +179,26 @@ fn main() {
         },
         Some(SubCommand::Add { task }) => {
             let mut cursor = list.add(&task);
-            questionnaire(&mut cursor).unwrap();
+            questionnaire(&mut cursor).await.unwrap();
         },
         Some(SubCommand::Replace { index, task }) => {
             list.replace(index-1, &task).unwrap();
         },
         Some(SubCommand::Complete) => {
             let mut cursor = list.complete().unwrap();
-            questionnaire(&mut cursor).unwrap();
+            questionnaire(&mut cursor).await.unwrap();
         },
         Some(SubCommand::Delete { index }) => {
             let mut cursor = list.delete(index-1).unwrap();
-            questionnaire(&mut cursor).unwrap();
+            questionnaire(&mut cursor).await.unwrap();
         },
         Some(SubCommand::Defer) => {
             let mut cursor = list.defer();
-            questionnaire(&mut cursor).unwrap();
+            questionnaire(&mut cursor).await.unwrap();
         },
         Some(SubCommand::AddSecret { name }) => {
             suppress = true;
-            add_secret(&name).unwrap();
+            add_secret(&name).await.unwrap();
         },
         Some(SubCommand::DeleteSecret { name }) => {
             suppress = true;

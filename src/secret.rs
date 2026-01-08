@@ -27,8 +27,8 @@ pub fn replace_secrets(template: &mut String) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn add_secret(name: &str) -> Result<(), Error> {
-    let secret = get_secret(name)?;
+pub async fn add_secret(name: &str) -> Result<(), Error> {
+    let secret = get_secret(name).await?;
     let entry = Entry::new("nextup", name).map_err(Error::from_error)?;
     entry.set_password(&secret).map_err(Error::from_error)
 }

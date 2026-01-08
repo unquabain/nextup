@@ -12,6 +12,9 @@ pub enum Error {
 
     #[error("No secret entered")]
     NoSecretEntered,
+
+    #[error("UI Error: {0}")]
+    UiError(#[from] raccacoonie::error::Error),
 }
 
 impl Error {
