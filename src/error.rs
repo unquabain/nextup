@@ -21,9 +21,6 @@ pub enum Error {
 
     #[error("TLS Error: {0}")]
     TlsError(#[from] native_tls::Error),
-
-    #[error("Could not prepare {0} query: {1}")]
-    PrepareQueryError(&'static str, tokio_postgres::Error),
 }
 
 impl Error {
