@@ -43,10 +43,11 @@ impl List {
         &self.strings
     }
 
-    pub fn load(data: &mut dyn DataSource) -> Result<List,Error> {
+    pub async fn load(data: &mut DataSource) -> Result<List,Error> {
+        log::trace!("Loading list from data source");
         let mut strings = Strings::new();
         let mut rank = Vec::new();
-        for string in data.load()? {
+        for string in data.load().await? {
             let range = strings.add(&string);
             rank.push(range);
         }
@@ -57,12 +58,12 @@ impl List {
         })
     }
 
-    pub fn save(&mut self, data: &mut dyn DataSource) -> Result<(),Error> {
+    pub async fn save(&mut self, data: &mut DataSource) -> Result<(),Error> {
         if !self.dirty {
             return Ok(());
         }
         let strings = self.iter().map(|s| s.to_string()).collect();
-        data.save(strings)?;
+        data.save(strings).await?;
         Ok(())
     }
 

@@ -3,6 +3,8 @@ use clap::{Parser, Subcommand};
 use nextup::{questionnaire,List};
 use nextup::config::Config;
 use nextup::secret::{add_secret,delete_secret};
+use nextup::datasource::DataSource;
+use anyhow::*;
 
 #[derive(Subcommand, Debug)]
 enum DebugCommands {
@@ -82,84 +84,105 @@ struct Args {
     #[arg(short='g', long)]
     debug: bool,
 
+    /// Enable extra verbose and extra capricious trace output
+    #[arg(short, long)]
+    trace: bool,
+
     /// If no command is given, print the next task
     #[command(subcommand)]
     subcommand: Option<SubCommand>,
 }
 
 impl Args {
-    pub fn config(&self) -> Config {
+    pub fn config(&self) -> Result<Config> {
         let path = Config::filepath_or_default(&self.config);
         let mut cfg = match path {
             Some(resolved) => Config::from_filepath(&resolved).unwrap_or_default(),
             None => Config::default(),
         };
         if self.list.is_some() {
-            cfg.list.replace_range(.., self.list.as_ref().unwrap());
+            cfg.list.replace_range(.., self.list.as_ref().ok_or(anyhow!("No list specified"))?);
         }
-        cfg
+        Ok(cfg)
     }
-    
+    pub async fn data_source(&self) -> Result<DataSource> {
+        let cfg = self.config()?;
+        let ds = cfg.data_source().await
+            .context("Failed to open data source")?;
+        Ok(ds)
+    }
+    pub async fn list(&self) -> Result<(List, DataSource)> {
+        let mut ds = self.data_source().await?;
+        let list = List::load(&mut ds).await?;
+        Ok((list, ds))
+    }
 }
 
+fn nextup(list: &List) {
+    match list.nextup() {
+        Some(task) => println!("Next up: {}", task),
+        None => println!("All caught up!"),
+    }
+}
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     use log::LevelFilter;
     colog::default_builder()
-        .filter(None, if args.debug { LevelFilter::Debug } else { LevelFilter::Info })
-        .init();
+        .filter(
+            None,
+            if args.trace {
+                LevelFilter::Trace
+            } else if args.debug {
+                LevelFilter::Debug
+            } else {
+                LevelFilter::Info
+            },
+        ).init();
 
-    let config = args.config();
-    let mut ds = config.data_source().unwrap();
-    let mut list = match List::load(ds.as_mut()) {
-        Ok(list) => list,
-        Err(_) => List::new(),
-    };
-
-    let mut suppress = false;
     match args.subcommand {
         Some(SubCommand::List) => {
+            let (list, _) = args.list().await?;
             for (i, task) in list.iter().enumerate() {
                 println!("{}: {}", i+1, task);
             }
+            nextup(&list);
         },
         Some(SubCommand::ListLists) => {
-            let lists = ds.list_lists().unwrap();
+            let lists = args.data_source().await?.list_lists().await?;
             for list in lists {
                 println!("{}", list);
             }
-            suppress = true;
         },
         Some(SubCommand::All) => {
-            let tasks = ds.all_first_tasks().unwrap();
+            let tasks = args.data_source().await?.all_first_tasks().await?;
             for (list, task) in tasks {
                 println!("{}: {}", list, task);
             }
-            suppress = true;
         },
-        Some(SubCommand::Debug {subcommand}) => {
-            suppress = true;
+        Some(SubCommand::Debug {ref subcommand}) => {
             match subcommand {
                 DebugCommands::Inspect => {
                     println!("Tasks:");
+                    let (list, _) = args.list().await?;
                     for (i, task) in list.iter().enumerate() {
                         println!("{}: {}", i+1, task);
                     }
                     println!("Strings:");
+                    let (list, _) = args.list().await?;
                     for (i, range) in list.strings().iter().enumerate() {
                         let free = if range.free { "free" } else { "used" };
                         println!("{}: {} - {} ({}): {}", i, range.range.start, range.range.end, free, range.value);
                     }
                 },
                 DebugCommands::DBPath => {
-                    println!("{:?}", ds);
+                    println!("{:?}", args.config()?.data_source);
                 },
                 DebugCommands::ConfigPath => {
                     match Config::filepath_or_default(&args.config) {
-                        Some(path) => println!("{:?}", path),
+                        Some(path) => println!("{}", path.display()),
                         None => {
                             println!("No config file found");
                             println!("Try creating one in one of the following locations:");
@@ -172,48 +195,57 @@ async fn main() {
                     }
                 },
                 DebugCommands::Nuke => {
-                    ds.nuke().unwrap();
-                    list = List::new();
+                    let mut ds = args.data_source().await?;
+                    ds.nuke().await?;
+                    let mut list = List::new();
+                    list.save(&mut ds).await?;
                 },
             }
         },
-        Some(SubCommand::Add { task }) => {
+        Some(SubCommand::Add { ref task }) => {
+            let (mut list, mut ds) = args.list().await?;
             let mut cursor = list.add(&task);
-            questionnaire(&mut cursor).await.unwrap();
+            questionnaire(&mut cursor).await?;
+            list.save(&mut ds).await?;
+            nextup(&list)
         },
-        Some(SubCommand::Replace { index, task }) => {
-            list.replace(index-1, &task).unwrap();
+        Some(SubCommand::Replace { index, ref task }) => {
+            let (mut list, mut ds) = args.list().await?;
+            list.replace(index-1, &task)?;
+            list.save(&mut ds).await?;
+            nextup(&list)
         },
         Some(SubCommand::Complete) => {
-            let mut cursor = list.complete().unwrap();
-            questionnaire(&mut cursor).await.unwrap();
+            let (mut list, mut ds) = args.list().await?;
+            let mut cursor = list.complete()?;
+            questionnaire(&mut cursor).await?;
+            list.save(&mut ds).await?;
+            nextup(&list)
         },
         Some(SubCommand::Delete { index }) => {
-            let mut cursor = list.delete(index-1).unwrap();
-            questionnaire(&mut cursor).await.unwrap();
+            let (mut list, mut ds) = args.list().await?;
+            let mut cursor = list.delete(index-1)?;
+            questionnaire(&mut cursor).await?;
+            list.save(&mut ds).await?;
+            nextup(&list)
         },
         Some(SubCommand::Defer) => {
+            let (mut list, mut ds) = args.list().await?;
             let mut cursor = list.defer();
-            questionnaire(&mut cursor).await.unwrap();
+            questionnaire(&mut cursor).await?;
+            list.save(&mut ds).await?;
+            nextup(&list)
         },
         Some(SubCommand::AddSecret { name }) => {
-            suppress = true;
-            add_secret(&name).await.unwrap();
+            add_secret(&name).await?;
         },
         Some(SubCommand::DeleteSecret { name }) => {
-            suppress = true;
-            delete_secret(&name).unwrap();
+            delete_secret(&name)?;
         },
-        None => (),
+        None => {
+            let (list, _) = args.list().await?;
+            nextup(&list);
+        },
     }
-    if ! suppress {
-        match list.nextup() {
-            Some(task) => println!("Next up: {}", task),
-            None => println!("All caught up!"),
-        }
-    }
-    let saved = list.save(ds.as_mut());
-    if let Err(e) = saved {
-        eprintln!("Error saving list: {}", e);
-    }
+    Ok(())
 }

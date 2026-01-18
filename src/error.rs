@@ -15,6 +15,15 @@ pub enum Error {
 
     #[error("UI Error: {0}")]
     UiError(#[from] raccacoonie::error::Error),
+
+    #[error("Database Error: {0}")]
+    DbError(#[from] tokio_postgres::Error),
+
+    #[error("TLS Error: {0}")]
+    TlsError(#[from] native_tls::Error),
+
+    #[error("Could not prepare {0} query: {1}")]
+    PrepareQueryError(&'static str, tokio_postgres::Error),
 }
 
 impl Error {
@@ -26,3 +35,4 @@ impl Error {
     }
 }
 
+pub type Result<T> = std::result::Result<T, Error>;

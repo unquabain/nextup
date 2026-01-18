@@ -11,16 +11,19 @@ pub enum DataSourceType {
 }
 
 impl DataSourceType {
-    pub fn data_source(&self, list: &str) -> Result<Box::<dyn DataSource>,Error> {
+    pub async fn data_source(&self, list: &str) -> Result<DataSource,Error> {
+        log::trace!("Creating data source: {:?}", self);
         Ok(match self {
             DataSourceType::Bincode(path) => {
                 let mut path = path.clone();
                 path.push(list);
-                Box::new(Bincode{path})
+                DataSource::Bincode(Bincode{path})
             },
             DataSourceType::Postgres(connection_string) => {
-                let ds = DSPostgres::new(connection_string, list)?;
-                Box::new(ds)
+                log::trace!("Creating Postgres data source with connection string: {}", connection_string);
+                let ds = DSPostgres::new(connection_string, list).await?;
+                log::trace!("Postgres data source created");
+                DataSource::Postgres(ds)
             },
         })
     }
@@ -149,8 +152,8 @@ impl Config {
         Self::from_read(&mut file)
     }
 
-    pub fn data_source(&self) -> Result<Box<dyn DataSource>,Error> {
-        self.data_source.data_source(&self.list)
+    pub async fn data_source(&self) -> Result<DataSource,Error> {
+        self.data_source.data_source(&self.list).await
     }
 }
 

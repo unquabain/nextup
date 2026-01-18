@@ -1,12 +1,11 @@
-use crate::error::Error;
+use crate::error::{Error,Result};
 
-use postgres::{Client, Statement};
+use tokio_postgres::{Config, Client, Statement};
 use native_tls::TlsConnector;
 use postgres_native_tls::MakeTlsConnector;
-use postgres::types::Type;
-use crate::datasource::DataSource;
+use tokio_postgres::types::Type;
 use crate::secret::replace_secrets;
-use log::*;
+use log::trace;
 
 pub struct DSPostgres {
     client: Client,
@@ -25,41 +24,76 @@ impl std::fmt::Debug for DSPostgres {
 }
 
 impl DSPostgres {
-    pub fn new(url: &str, list: &str) -> Result<Self, Error> {
-        let connector = TlsConnector::new().map_err(Error::from_error)?;
+    async fn init_tables(client: &Client) -> Result<()> {
+        client.execute(
+            "CREATE TABLE IF NOT EXISTS nextup (rank INT, task TEXT, list VARCHAR(255), UNIQUE (rank, list) )",
+            &[],
+        ).await?;
+        Ok(())
+    }
+    async fn prepare_fetch_query(client: &Client) -> Result<Statement> {
+        let query = "SELECT task FROM nextup WHERE list = $1 ORDER BY rank";
+        Ok(client.prepare_typed(query, &[Type::TEXT]).await?)
+    }
+    async fn prepare_clear_query(client: &Client) -> Result<Statement> {
+        let query = "DELETE FROM nextup WHERE list = $1";
+        let stmt = client.prepare_typed(query, &[Type::TEXT]).await?;
+        Ok(stmt)
+    }
+    async fn prepare_save_query(client: &Client) -> Result<Statement> {
+        let query = "INSERT INTO nextup (rank, task, list) VALUES ($1, $2, $3) ON CONFLICT (list, rank) DO UPDATE SET task = $2";
+        let stmt = client.prepare_typed(query, &[Type::INT4, Type::TEXT, Type::TEXT]).await?;
+        Ok(stmt)
+    }
+    async fn prepare_list_lists_query(client: &Client) -> Result<Statement> {
+        let query = "SELECT DISTINCT list FROM nextup ORDER BY list";
+        let stmt = client.prepare_typed(query, &[]).await?;
+        Ok(stmt)
+    }
+    async fn prepare_all_first_tasks_query(client: &Client) -> Result<Statement> {
+        let query = "SELECT list, task FROM nextup WHERE rank = 0 ORDER BY list";
+        let stmt = client.prepare_typed(query, &[]).await?;
+        Ok(stmt)
+    }
+    pub async fn new(url: &str, list: &str) -> Result<Self> {
+        let connector = TlsConnector::new()?;
         let connector = MakeTlsConnector::new(connector);
         let mut surl = url.to_string();
         replace_secrets(&mut surl)?;
-        let mut client = Client::connect(&surl, connector)
-            .map_err(Error::from_error)?;
-        let fetch_query = match client.prepare_typed("SELECT task FROM nextup WHERE list = $1 ORDER BY rank", &[Type::TEXT]) {
+        let config: Config = surl.parse()?;
+        let (client, connection) = config.connect(connector)
+            .await?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                eprintln!("Postgres connection error: {}", e);
+            }
+        });
+        trace!("{}:{}", file!(), line!());
+        let fetch_query = match Self::prepare_fetch_query(&client).await {
             Ok(q) => q,
-            Err(e) => {
+            Err(Error::DbError(e)) => {
                 match e.code() {
-                    Some(&postgres::error::SqlState::UNDEFINED_TABLE) => {
-                        client.execute(
-                            "CREATE TABLE IF NOT EXISTS nextup (rank INT, task TEXT, list VARCHAR(255), UNIQUE (rank, list) )",
-                            &[],
-                        ) .map_err(Error::from_error)?;
-                        client.prepare_typed("SELECT task FROM nextup WHERE list = $1 ORDER BY rank", &[Type::TEXT])
-                            .map_err(Error::from_error)?
+                    Some(&tokio_postgres::error::SqlState::UNDEFINED_TABLE) => {
+                        Self::init_tables(&client).await?;
+                        Self::prepare_fetch_query(&client).await?
                     },
-                    _ => {
-                        error!("Error preparing fetch query: {}", e);
-                        return Err(Error::from_error(e));
-                    }
+                    _ => return Err(Error::DbError(e)),
                 }
             }
+            Err(e) => {
+                return Err(e);
+            }
         };
-        let clear_query = client.prepare_typed("DELETE FROM nextup WHERE list = $1", &[Type::TEXT])
-            .map_err(Error::from_error)?;
-        let save_query = client.prepare_typed("INSERT INTO nextup (rank, task, list) VALUES ($1, $2, $3) ON CONFLICT (list, rank) DO UPDATE SET task = $2", &[Type::INT4, Type::TEXT, Type::TEXT])
-            .map_err(Error::from_error)?;
-        let list_list_query = client.prepare("SELECT DISTINCT list FROM nextup ORDER BY list")
-            .map_err(Error::from_error)?;
-        let all_first_tasks_query = client.prepare("SELECT list, task FROM nextup WHERE rank = 0 ORDER BY list")
-            .map_err(Error::from_error)?;
-            
+        trace!("{}:{}", file!(), line!());
+        let clear_query = Self::prepare_clear_query(&client).await?;
+        trace!("{}:{}", file!(), line!());
+        let save_query =  Self::prepare_save_query(&client).await?;
+        trace!("{}:{}", file!(), line!());
+        let list_list_query = Self::prepare_list_lists_query(&client).await?;
+        trace!("{}:{}", file!(), line!());
+        let all_first_tasks_query = Self::prepare_all_first_tasks_query(&client).await?;
+        trace!("{}:{}", file!(), line!());
+
         Ok(DSPostgres{
             client,
             list: list.to_string(),
@@ -70,47 +104,45 @@ impl DSPostgres {
             all_first_tasks_query,
         })
     }
-}
-
-impl DataSource for DSPostgres {
-    fn load(&mut self) -> Result<Vec<String>, Error> {
+    pub async fn load(&mut self) -> Result<Vec<String>> {
+        trace!("Loading list '{}' from Postgres", self.list);
         let rows = self.client.query(&self.fetch_query, &[&self.list])
-            .map_err(Error::from_error)?;
-       
-        let mut strings = Vec::new();
+            .await?;
+
+        let mut strings: Vec<String> = Vec::new();
         for row in rows {
-            strings.push(row.get(0));
+            strings.push(row.get::<usize, String>(0));
         }
         Ok(strings)
     }
-    fn save(&mut self, data: Vec<String>) -> Result<(), Error> {
-        let mut txn = self.client.transaction().map_err(Error::from_error)?;
+    pub async fn save(&mut self, data: Vec<String>) -> Result<()> {
+        let txn = self.client.transaction().await?;
         txn.execute(&self.clear_query, &[&self.list])
-            .map_err(Error::from_error)?;
+            .await?;
         for (i, task) in data.iter().enumerate() {
             txn.execute(&self.save_query, &[&(i as i32), task, &self.list])
-                .map_err(Error::from_error)?;
-        }
-        txn.commit().map_err(Error::from_error)?;
+                .await?;
+            }
+        txn.commit().await?;
         Ok(())
     }
-    fn nuke(&mut self) -> Result<(), Error> {
+    pub async fn nuke(&mut self) -> Result<()> {
         self.client.execute(&self.clear_query, &[&self.list])
-            .map_err(Error::from_error)?;
+            .await?;
         Ok(())
     }
-    fn list_lists(&mut self) -> Result<Vec<String>, Error> {
+    pub async fn list_lists(&mut self) -> Result<Vec<String>> {
         let rows = self.client.query(&self.list_list_query, &[])
-            .map_err(Error::from_error)?;
+            .await?;
         let mut lists = Vec::new();
         for row in rows {
             lists.push(row.get(0));
         }
         Ok(lists)
     }
-    fn all_first_tasks(&mut self) -> Result<Vec<(String,String)>, Error> {
+    pub async fn all_first_tasks(&mut self) -> Result<Vec<(String,String)>> {
         let rows = self.client.query(&self.all_first_tasks_query, &[])
-            .map_err(Error::from_error)?;
+            .await?;
         let mut tasks = Vec::new();
         for row in rows {
             tasks.push((row.get(0), row.get(1)));
